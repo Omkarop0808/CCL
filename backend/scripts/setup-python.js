@@ -33,6 +33,13 @@ const venvCreated =
 if (venvCreated) {
   console.log(`Installing dependencies into ${venvDir}...`);
   success = runCommand(`${venvPython} -m pip install -r ${reqFile}`);
+  
+  if (!success && isLinux) {
+    console.log('Venv pip install failed (likely missing ensurepip). Bootstrapping pip into venv...');
+    runCommand('curl -fsSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py');
+    runCommand(`${venvPython} get-pip.py`);
+    success = runCommand(`${venvPython} -m pip install -r ${reqFile}`);
+  }
 }
 
 // 2. Fallbacks if venv creation or installation failed
