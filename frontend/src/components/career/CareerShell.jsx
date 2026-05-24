@@ -12,7 +12,6 @@ const nav = [
   { to: '/career/interview', icon: Wand2, label: 'Interview Lab' },
   { to: '/career/roadmap', icon: Route, label: 'Career Roadmap' },
   { to: '/career/resume', icon: FileBadge, label: 'Resume Hub' },
-  { to: '/career/job-hunter', icon: BriefcaseBusiness, label: 'Job Hunter' },
 ];
 
 export default function CareerShell() {
