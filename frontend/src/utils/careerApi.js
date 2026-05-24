@@ -240,3 +240,47 @@ export async function sendCareerSocraticTurn(payload) {
   const { data } = await api.post('/career/socratic/turn', payload);
   return data;
 }
+
+// ----------------------------
+// Job Hunter
+// ----------------------------
+export async function jobHunterSaveProfile(payload) {
+  const { data } = await api.post('/job-hunter/profile', payload);
+  return data;
+}
+
+export async function jobHunterGetProfile() {
+  const { data } = await api.get('/job-hunter/profile');
+  return data;
+}
+
+export async function jobHunterStartRun() {
+  const { data } = await api.post('/job-hunter/run', {});
+  return data;
+}
+
+export async function jobHunterStopRun(runId) {
+  const { data } = await api.post(`/job-hunter/run/${encodeURIComponent(runId)}/stop`, {});
+  return data;
+}
+
+export async function jobHunterGetRuns() {
+  const { data } = await api.get('/job-hunter/runs');
+  return data;
+}
+
+export async function jobHunterGetJobs(runId = '') {
+  const q = runId ? `?runId=${encodeURIComponent(runId)}` : '';
+  const { data } = await api.get(`/job-hunter/jobs${q}`);
+  return data;
+}
+
+export async function jobHunterUpdateStatus(jobId, status) {
+  const { data } = await api.patch(`/job-hunter/jobs/${encodeURIComponent(jobId)}/status`, { status });
+  return data;
+}
+
+export async function jobHunterGenerateCoverLetter(jobId, payload = {}) {
+  const { data } = await api.post(`/job-hunter/jobs/${encodeURIComponent(jobId)}/cover-letter`, payload);
+  return data;
+}

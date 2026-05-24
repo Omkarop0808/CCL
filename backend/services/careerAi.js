@@ -16,7 +16,7 @@ function getGeminiKey() {
 }
 
 function getGeminiModel() {
-  return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  return 'gemini-2.0-flash';
 }
 
 async function readErrorBody(response) {
@@ -137,9 +137,17 @@ export async function callGeminiStructuredJSON(systemPrompt, userPrompt, maxToke
       if (response.ok) {
         const data = await response.json();
         const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+        console.log('--- GEMINI RAW OUTPUT LENGTH ---', raw.length);
+        console.log('--- GEMINI FINISH REASON ---', data?.candidates?.[0]?.finishReason);
+        console.log('--- GEMINI RAW OUTPUT ENDS WITH ---', raw.slice(-50));
+        
+        // DEBUG WRITE TO FILE
+        import('fs').then(fs => fs.appendFileSync('gemini_debug.txt', `\n\n--- [${new Date().toISOString()}] FINISH: ${data?.candidates?.[0]?.finishReason} LENGTH: ${raw.length} ---\n${raw}\n`)).catch(e=>e);
+
         const parsed = safeParseJSON(raw);
         if (parsed) return parsed;
 
+        console.log('--- GEMINI JSON PARSE FAILED. CALLING GROQ REPAIR ---');
         const repair = await callGroqChat(
           'You output only valid JSON. No markdown.',
           `Fix to valid JSON only:\n${raw}`,

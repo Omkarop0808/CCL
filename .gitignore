@@ -40,5 +40,15 @@ Thumbs.db
 # Local / hackathon scratch folders
 job-apply-AI-agent/
 PICT-HACKATHON/
-skill-path-finder-58/
+skill-path-finder-58s
 
+.docs
+.job-app
+.CAREER_ROADMAP.md
+
+# Test files
+backend/test_*.js
+backend/output*.txt
+backend/check_steps.js
+job-app/
+CAREER_ROADMAP.md

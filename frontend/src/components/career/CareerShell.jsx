@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Sparkles, Trophy, Wand2, FileBadge, Route, User, LogOut, Edit, ChevronDown, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Sparkles, Trophy, Wand2, FileBadge, Route, User, LogOut, Edit, ChevronDown, Menu, X, BriefcaseBusiness } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import WorldToggle from '../world/WorldToggle';
 import '../../styles/career.css';
@@ -12,6 +12,7 @@ const nav = [
   { to: '/career/interview', icon: Wand2, label: 'Interview Lab' },
   { to: '/career/roadmap', icon: Route, label: 'Career Roadmap' },
   { to: '/career/resume', icon: FileBadge, label: 'Resume Hub' },
+  { to: '/career/job-hunter', icon: BriefcaseBusiness, label: 'Job Hunter' },
 ];
 
 export default function CareerShell() {

@@ -28,6 +28,7 @@ import AlgorithmVisualizer from './pages/career/AlgorithmVisualizer';
 import ProblemArena from './pages/career/ProblemArena';
 import InterviewLab from './pages/career/InterviewLab';
 import ResumeHub from './pages/career/ResumeHubV2';
+import JobHunter from './pages/career/JobHunter';
 import RoadmapPage from './features/career-roadmap/RoadmapPage';
 
 function RequireAuth({ children }) {
@@ -114,6 +115,7 @@ export default function App() {
                   <Route path="interview" element={<InterviewLab />} />
                   <Route path="roadmap" element={<RoadmapPage />} />
                   <Route path="resume" element={<ResumeHub />} />
+                  <Route path="job-hunter" element={<JobHunter />} />
                   <Route path="*" element={<Navigate to="/career/dashboard" replace />} />
                 </Route>
 

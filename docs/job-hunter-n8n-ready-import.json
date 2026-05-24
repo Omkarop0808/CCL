@@ -1,0 +1,267 @@
+{
+  "name": "SAHAYA Job Hunter Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-hunter/trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Job Hunter Trigger In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "runId",
+              "value": "={{ $json.runId || $json.run_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "userId",
+              "value": "={{ $json.userId || $json.user_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "resumeText",
+              "value": "={{ $json.resumeText || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "targetRoles",
+              "value": "={{ $json.targetRoles || [] }}",
+              "type": "array"
+            },
+            {
+              "id": "a5",
+              "name": "filters",
+              "value": "={{ $json.filters || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "a6",
+              "name": "callbackUrl",
+              "value": "={{ $json.callback?.url || $env.JOB_HUNTER_CALLBACK_URL || 'http://host.docker.internal:5000/api/job-hunter/webhook/n8n' }}",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "callbackSecret",
+              "value": "={{ $json.callback?.secret || $env.JOB_HUNTER_RESULTS_WEBHOOK_SECRET || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Prepare Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-job-hunter-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ eventType: 'run_started', runId: $json.runId, userId: $json.userId, jobs: [], meta: { source: 'n8n', stage: 'run_started' } }) }}",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Callback run_started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst roles = Array.isArray(input.targetRoles) && input.targetRoles.length ? input.targetRoles : ['Software Engineer'];\nconst filters = input.filters || {};\nconst location = String(filters.location || 'India');\nconst keyword = String(filters.keyword || roles[0] || 'Engineer');\nconst now = new Date();\n\nconst jobs = roles.slice(0, 5).map((role, i) => ({\n  externalId: `${input.runId}-demo-${i + 1}`,\n  title: `${role}`,\n  company: ['Google', 'Microsoft', 'Amazon', 'Atlassian', 'Adobe'][i % 5],\n  location,\n  url: `https://example.com/jobs/${encodeURIComponent(role.toLowerCase().replace(/\\s+/g, '-'))}-${i + 1}`,\n  description: `Auto-generated sample listing for ${role}. Keyword focus: ${keyword}.`,\n  postedAt: new Date(now.getTime() - i * 86400000).toISOString(),\n  source: 'linkedin',\n  easyApply: Boolean(filters.easyApply),\n  skills: ['JavaScript', 'React', 'Node.js'],\n  improvements: ['Tailor resume to JD', 'Highlight quantified impact'],\n  score: 75 + i * 4,\n  raw: { generatedBy: 'n8n-demo' }\n}));\n\nreturn [{ json: { ...input, jobs } }];"
+      },
+      "id": "4",
+      "name": "Build Jobs Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-job-hunter-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ eventType: 'jobs_batch', runId: $json.runId, userId: $json.userId, jobs: $json.jobs || [], meta: { source: 'n8n', stage: 'jobs_batch' } }) }}",
+        "options": {}
+      },
+      "id": "5",
+      "name": "Callback jobs_batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-job-hunter-secret",
+              "value": "={{ $json.callbackSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ eventType: 'run_completed', runId: $json.runId, userId: $json.userId, jobs: [], meta: { source: 'n8n', stage: 'run_completed', generatedCount: Array.isArray($json.jobs) ? $json.jobs.length : 0 } }) }}",
+        "options": {}
+      },
+      "id": "6",
+      "name": "Callback run_completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ ({ ok: true, runId: $json.runId, userId: $json.userId, sentJobs: Array.isArray($json.jobs) ? $json.jobs.length : 0 }) }}",
+        "options": {}
+      },
+      "id": "7",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Job Hunter Trigger In": {
+      "main": [
+        [
+          {
+            "node": "Prepare Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context": {
+      "main": [
+        [
+          {
+            "node": "Callback run_started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback run_started": {
+      "main": [
+        [
+          {
+            "node": "Build Jobs Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Jobs Batch": {
+      "main": [
+        [
+          {
+            "node": "Callback jobs_batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback jobs_batch": {
+      "main": [
+        [
+          {
+            "node": "Callback run_completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback run_completed": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "job-hunter-ready-import-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "job-hunter-ready-import",
+  "tags": []
+}

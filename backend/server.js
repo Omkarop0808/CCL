@@ -36,6 +36,7 @@ import careerRoadmapRoutes from './career-roadmap/routes.js';
 import interviewLabRoutes from './routes/interviewLab.js';
 import gamificationRoutes from './routes/gamification.js';
 import socraticRoutes from './routes/socratic.js';
+import jobHunterRoutes from './routes/jobHunter.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -86,6 +87,7 @@ app.use('/api/career/skillscan', skillscanRoutes);
 app.use('/api/career/socratic', socraticRoutes);
 app.use('/api/roadmap', careerRoadmapRoutes);
 app.use('/api/interview', interviewLabRoutes);
+app.use('/api/job-hunter', jobHunterRoutes);
 
 // Health check
 app.get('/api/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

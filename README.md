@@ -145,7 +145,7 @@ cp .env.example .env
 Edit the `.env` file to include your **Supabase URL**, **Supabase Service Key**, and **Gemini/Groq API Keys**.
 
 ```bash
-# Start the Backend (Usually http://localhost:5006)
+# Start the Backend (Usually http://localhost:5000)
 npm run dev
 ```
 

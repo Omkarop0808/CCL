@@ -554,6 +554,7 @@ async function tryFetchLeetCode(url) {
 router.post('/visualizer/analyze', authMiddleware, async (req, res) => {
   const userId = req.userId;
   const raw = String(req.body?.input || '').trim();
+  const lang = String(req.body?.language || 'python').toLowerCase();
   if (!raw) return res.status(400).json({ error: 'input is required' });
 
   let fetched = null;
@@ -564,7 +565,7 @@ router.post('/visualizer/analyze', authMiddleware, async (req, res) => {
     fetched = null;
   }
 
-  const system = `You are an expert DSA teacher.
+  const groqSystem = `You are an expert DSA teacher.
 Return STRICT JSON only with this exact shape:
 {
   "problem": {
@@ -580,47 +581,93 @@ Return STRICT JSON only with this exact shape:
     "approach": ["string"],
     "recognitionHints": ["string"]
   },
-  "visualization": {
-    "primaryStructure": "array"|"linked_list"|"tree"|"graph"|"dp"|"stack"|"queue"|"sorting"|"mixed",
-    "steps": [{
-      "label": "string",
-      "stepText": "string",
-      "voiceText": "string",
-      "state": {
-        "array": [{"value": "string", "highlight": "none"|"active"|"compare"|"swap"|"window"}],
-        "pointers": [{ "name":"string", "index": number, "color":"string" }],
-        "window": { "l": number, "r": number, "ok": boolean },
-        "stack": ["string"],
-        "queue": ["string"],
-        "dpGrid": { "rows": number, "cols": number, "cells": [{"r":number,"c":number,"value":"string","highlight":"none"|"active"|"done"}] },
-        "graph": { "nodes":[{"id":"string","label":"string","state":"idle"|"frontier"|"visited"|"active"}], "edges":[{"from":"string","to":"string"}], "active":"string" },
-        "tree": { "nodes":[{"id":"string","label":"string","state":"idle"|"active"|"visited"}], "edges":[{"from":"string","to":"string"}], "active":"string" }
-      }
-    }]
-  },
   "final": {
-    "language": "python",
+    "language": "${lang}",
     "code": "string",
     "complexity": { "time": "string", "space": "string", "explain": "string" },
     "similar": [{ "title": "string", "pattern": "string" }]
   }
+}`;
+
+  const geminiSystem = `You are an expert DSA teacher.
+Return STRICT JSON only with this exact shape:
+{
+  "visualization": {
+    "primaryStructure": "array"|"linked_list"|"tree"|"graph"|"dp"|"stack"|"queue"|"sorting"|"mixed",
+    "steps": [
+      {
+        "stepNo": 1,
+        "label": "string",
+        "stepText": "string",
+        "voiceText": "string",
+        "state": {
+          "array": [{"value": "string", "highlight": "none"|"active"|"compare"|"swap"|"window"}],
+          "pointers": [{ "name":"string", "index": 0, "color":"string" }],
+          "window": { "l": 0, "r": 0, "ok": false },
+          "stack": ["string"],
+          "queue": ["string"],
+          "dpGrid": { "rows": 0, "cols": 0, "cells": [{"r":0,"c":0,"value":"string","highlight":"none"|"active"|"done"}] },
+          "graph": { "nodes":[{"id":"string","label":"string","state":"idle"|"frontier"|"visited"|"active"}], "edges":[{"from":"string","to":"string"}], "active":"string" },
+          "tree": { "nodes":[{"id":"string","label":"string","state":"idle"|"active"|"visited"}], "edges":[{"from":"string","to":"string"}], "active":"string" }
+        }
+      }
+    ]
+  }
 }
 Rules:
-- voiceText must teach WHY, stepText states WHAT (keep them different).
-- steps MUST trace the algorithm ITERATION BY ITERATION. DO NOT skip loops or summarize! If a loop runs 10 times, generate steps for EVERY iteration. Show granular pointer movements step-by-step to create detailed array visualizations.
-- steps must be accurate for ONE chosen example (use first example).
-- Keep steps <= 60 for performance.`;
-
-  const prompt = `INPUT (URL or name): ${raw}
+- voiceText must teach WHY, stepText states WHAT.
+- You must generate EXACTLY 6 or more elements in the steps array.
+- CRITICAL: Ensure tree, graph, and matrix (array) states are rigorously populated.`;
+  const commonPrompt = `INPUT (URL or name): ${raw}
 FETCHED (optional):
 ${fetched ? JSON.stringify(fetched).slice(0, 18000) : '(none)'}
 
-If fetched.contentHtml exists, extract clean text problem statement, constraints, and examples from it.
-Then pick the best pattern, produce an accurate step-by-step visualization script for example #1, and produce the optimal Python solution.
-CRITICAL: Do NOT output a class like 'class Solution:'. You must output a raw function. Then, at the very end of the code, you MUST append a driver block that assigns sample inputs from example #1, calls your function on those inputs, and EXPLICITLY PRINTS the result using 'print()'. If you don't use 'print()', the visualizer will show 'No output'!`;
+If fetched.contentHtml exists, extract clean text problem statement, constraints, and examples from it.`;
+
+  const groqPrompt = `${commonPrompt}
+Then pick the best pattern and produce the optimal ${lang} solution.
+CRITICAL: Your "code" string MUST end with a driver block that explicitly calls your function with Example 1 inputs and prints the result!
+Example:
+def solve(nums):
+    return sum(nums)
+print(solve([1, 2, 3]))
+
+If you do not call the function and print the result, the tracer will fail! DO NOT use 'class Solution:'!`;
+
+  const geminiPrompt = `${commonPrompt}
+Produce an accurate step-by-step FULL DRY RUN execution visualization script for example #1.
+CRITICAL INSTRUCTIONS:
+You MUST generate an array of EXACTLY 6 steps representing the flow of execution.
+Step 1: Initialize variables and data structures.
+Step 2: Enter the main loop or recursive call.
+Step 3: Trace the first major iteration or condition.
+Step 4: Trace the second major iteration or condition.
+Step 5: Trace the final iteration or condition.
+Step 6: Return the final result.
+If you output fewer than 6 steps, the entire application will crash.
+Do not output the code, ONLY the visualization JSON mapping the state changes.`;
 
   try {
-    const analysis = await callGeminiStructuredJSON(system, prompt, 8000);
+    const [groqData, geminiData] = await Promise.all([
+      callGroqChatJSON(groqSystem, groqPrompt, 2500).catch((e) => {
+        console.warn('Groq text generation failed:', e.message);
+        return { problem: null, pattern: null, final: null };
+      }),
+      callGeminiStructuredJSON(geminiSystem, geminiPrompt, 6000).catch((e) => {
+        console.warn('Gemini visualization failed:', e.message);
+        return { visualization: { steps: [] } };
+      })
+    ]);
+
+    const analysis = {
+      ...groqData,
+      visualization: geminiData?.visualization || { steps: [] }
+    };
+
+    if (!analysis.problem && !analysis.pattern) {
+      throw new Error("Both AI services failed to generate content.");
+    }
+
     // lightweight progress XP
     await insertOne('career_visualizer_runs', { id: randomUUID(), userId, input: raw, createdAt: nowIso(), analysis });
     await awardXp(userId, 8, 'career_visualizer_run', { world: WORLDS.career });
@@ -631,11 +678,59 @@ CRITICAL: Do NOT output a class like 'class Solution:'. You must output a raw fu
   }
 });
 
+router.post('/visualizer/translate', authMiddleware, async (req, res) => {
+  const { code, targetLanguage = 'python' } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'Code is required for translation.' });
+
+  const groqSystem = `You are an expert polyglot developer. Translate the given code to the requested language.
+Return STRICT JSON only:
+{
+  "code": "string (the translated raw code, no markdown formatting)"
+}`;
+  const groqPrompt = `Target Language: ${targetLanguage}\nCode:\n${code}\nEnsure it includes a main/driver function to print the test case output so execution tracers can run it.`;
+
+  try {
+    const data = await callGroqChatJSON(groqSystem, groqPrompt, 2000);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Failed to translate code.' });
+  }
+});
+
 router.post('/visualizer/trace', authMiddleware, async (req, res) => {
   const { code, language = 'python' } = req.body || {};
   if (!code) return res.status(400).json({ error: 'code is required' });
+
   if (language.toLowerCase() !== 'python') {
-    return res.status(400).json({ error: 'Only Python is supported for deterministic tracing.' });
+    // Use LLM to simulate the execution trace for C++ / Java
+    const sysPrompt = `You are a deterministic code execution tracer.
+Trace the given ${language} code step-by-step and return STRICT JSON in this exact shape:
+{
+  "steps": [
+    {
+      "line": number (the line number being executed),
+      "action": "call" | "return" | "line" | "error",
+      "description": "string (brief action description)",
+      "variables": { "varName": "varValueAsString" },
+      "callStack": ["funcName()"],
+      "output": "stdout output so far"
+    }
+  ],
+  "finalOutput": "string (the final stdout of the program)"
+}
+CRITICAL INSTRUCTIONS:
+1. You MUST generate an array of EXACTLY 8 to 20 steps. 
+2. If the code is short, break it down into micro-steps: evaluating conditions, variable assignments, entering loops, evaluating return values.
+3. Trace EVERY SINGLE ITERATION of loops or recursive calls. DO NOT summarize. Provide accurate variable values at each step.
+4. If you output fewer than 6 steps, the visualizer will crash!`;
+    const userPrompt = `Trace this ${language} code:\n\n${code}\n\nProduce EXACTLY 8 to 20 granular steps.`;
+    
+    try {
+      const simData = await callGeminiStructuredJSON(sysPrompt, userPrompt, 6000);
+      return res.json(simData);
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to simulate trace via AI: ' + e.message });
+    }
   }
 
   try {
