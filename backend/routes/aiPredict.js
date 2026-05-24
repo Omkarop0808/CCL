@@ -35,10 +35,14 @@ function runPythonCommand(command, baseArgs, inputData) {
 }
 
 async function runPythonPredict(inputData) {
+  const isLinux = process.platform === 'linux';
+  const venvPython = isLinux ? path.join(__dirname, '..', 'ai_service', 'venv', 'bin', 'python') : path.join(__dirname, '..', 'ai_service', 'venv', 'Scripts', 'python');
+  
   const configured = process.env.PYTHON_BIN?.trim();
   const candidates = configured
     ? [[configured, []]]
     : [
+      [venvPython, []],
       ['python3', []],
       ['python', []],
       ['py', ['-3']],

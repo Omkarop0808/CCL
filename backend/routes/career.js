@@ -270,7 +270,10 @@ function makeRoleIntelKey(goal, context = {}) {
 async function runPdfExtractionWithLlmware(pdfPath) {
   const scriptPath = path.join(process.cwd(), 'ai_service', 'resume_pdf_extract.py');
   return new Promise((resolve, reject) => {
-    const pyBin = process.env.PYTHON_BIN || 'python';
+    const isLinux = process.platform === 'linux';
+    const venvPython = isLinux ? path.join(__dirname, '..', 'ai_service', 'venv', 'bin', 'python') : path.join(__dirname, '..', 'ai_service', 'venv', 'Scripts', 'python');
+    let pyBin = process.env.PYTHON_BIN || 'python';
+    if (!process.env.PYTHON_BIN && isLinux && fs.existsSync(venvPython)) pyBin = venvPython;
     const child = spawn(pyBin, [scriptPath, pdfPath], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
@@ -735,7 +738,10 @@ CRITICAL INSTRUCTIONS:
 
   try {
     const scriptPath = path.join(process.cwd(), 'ai_service', 'tracer.py');
-    const pyBin = process.env.PYTHON_BIN || 'python';
+    const isLinux = process.platform === 'linux';
+    const venvPython = isLinux ? path.join(process.cwd(), 'ai_service', 'venv', 'bin', 'python') : path.join(process.cwd(), 'ai_service', 'venv', 'Scripts', 'python');
+    let pyBin = process.env.PYTHON_BIN || 'python';
+    if (!process.env.PYTHON_BIN && isLinux && fs.existsSync(venvPython)) pyBin = venvPython;
     
     const child = spawn(pyBin, [scriptPath], {
       stdio: ['pipe', 'pipe', 'pipe']
