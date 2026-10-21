@@ -7,7 +7,7 @@ function getGeminiKey() {
 }
 
 function getGeminiModel() {
-  return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  return process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 }
 
 function getGroqApiKey() {
@@ -81,43 +81,52 @@ export async function callGemini(systemPrompt, userPrompt, options = {}) {
   /* ── Gemini (secondary, with 2 retries for transient errors) ── */
   if (GEMINI_API_KEY) {
     const generationConfig = {
-      maxOutputTokens: maxTokens,
-      ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+      maxOutputTokens: jsonMode ? Math.max(maxTokens, 8192) : maxTokens,
+      ...(jsonMode ? { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } } : {}),
     };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${GEMINI_API_KEY}`;
+    const candidateModels = [...new Set([model, 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'])];
+    for (const curModel of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(curModel)}:generateContent?key=${GEMINI_API_KEY}`;
+      let modelFailed = false;
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-            generationConfig,
-          }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+              generationConfig,
+            }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          }
+
+          const body = await readErrorBody(response);
+          lastProviderError = `Gemini API Error (${curModel}): ${body}`;
+
+          if (response.status === 429 || body.toLowerCase().includes('quota')) {
+            console.warn(`[AI] Quota limit on ${curModel}, trying next model in cascade...`);
+            modelFailed = true;
+            break;
+          }
+
+          if ([500, 503].includes(response.status) && attempt < 1) {
+            await sleep(2000);
+            continue;
+          }
+          modelFailed = true;
+          break;
+        } catch (fetchErr) {
+          lastProviderError = `Gemini fetch error: ${fetchErr.message}`;
+          modelFailed = true;
+          break;
         }
-
-        const body = await readErrorBody(response);
-        lastProviderError = `Gemini API Error: ${body}`;
-
-        /* Retry on transient errors (429 rate limit, 503 overloaded, 500 internal) */
-        const retryable = [429, 500, 503].includes(response.status);
-        if (retryable && attempt < 2) {
-          console.log(`[AI] Gemini transient error (${response.status}), retrying in ${(attempt + 1) * 2}s...`);
-          await sleep((attempt + 1) * 2000);
-          continue;
-        }
-        break; /* non-retryable error, fall through */
-      } catch (fetchErr) {
-        lastProviderError = `Gemini fetch error: ${fetchErr.message}`;
-        if (attempt < 2) { await sleep(2000); continue; }
-        break;
       }
+      if (!modelFailed) break;
     }
 
     try {

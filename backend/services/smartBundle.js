@@ -46,8 +46,7 @@ export async function generateSmartUploadBundle(subject, fullText) {
   // Slice to 8000 chars (~2000 tokens) to ensure the total request stays under the strict 6000 TPM Groq Free Tier Limit.
   const user = `Subject/topic: ${subject}\n\n${videoHint}\n\nContent:\n${fullText.slice(0, 8000)}`;
 
-  // Requested tokens = Input (2000) + maxTokens (3500) = ~5500. This safely avoids Groq's 6000 TPM Request Too Large error.
-  const bundle = await callGeminiJSON(BUNDLE_SCHEMA_HINT, user, { maxTokens: 3500 });
+  const bundle = await callGeminiJSON(BUNDLE_SCHEMA_HINT, user, { maxTokens: 8192 });
 
   const enrichedVideos = apiVideos.length
     ? apiVideos.map((v) => ({

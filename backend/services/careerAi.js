@@ -16,7 +16,7 @@ function getGeminiKey() {
 }
 
 function getGeminiModel() {
-  return 'gemini-2.0-flash';
+  return process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 }
 
 async function readErrorBody(response) {
@@ -39,7 +39,13 @@ async function readErrorBody(response) {
  */
 export async function callGroqChat(systemPrompt, userPrompt, options = {}) {
   const key = getGroqKey();
-  if (!key) throw new Error('Missing GROQ_API_KEY for conversational AI');
+  if (!key) {
+    const geminiKey = getGeminiKey();
+    if (geminiKey) {
+      return await callGeminiText(systemPrompt, userPrompt, options.maxTokens ?? 1024);
+    }
+    throw new Error('Missing GROQ_API_KEY or GEMINI_API_KEY for conversational AI');
+  }
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -69,6 +75,14 @@ export async function callGroqChat(systemPrompt, userPrompt, options = {}) {
 }
 
 export async function callGroqChatJSON(systemPrompt, userPrompt, maxTokens = 900) {
+  const key = getGroqKey();
+  if (!key) {
+    const geminiKey = getGeminiKey();
+    if (geminiKey) {
+      return await callGeminiStructuredJSON(systemPrompt, userPrompt, maxTokens);
+    }
+    throw new Error('Missing GROQ_API_KEY or GEMINI_API_KEY');
+  }
   const raw = await callGroqChat(systemPrompt, userPrompt, { maxTokens, jsonMode: true });
   const parsed = safeParseJSON(raw);
   if (!parsed) throw new Error('Groq returned non-JSON output');
@@ -120,52 +134,68 @@ export async function callGeminiStructuredJSON(systemPrompt, userPrompt, maxToke
   let lastErr = '';
 
   if (key) {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-          generationConfig: {
-            maxOutputTokens: maxTokens,
-            temperature: 0.25,
-            responseMimeType: 'application/json',
-          },
-        }),
-      });
+    const candidateModels = [...new Set([model, 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'])];
+    for (const curModel of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(curModel)}:generateContent?key=${key}`;
+      let modelFailed = false;
 
-      if (response.ok) {
-        const data = await response.json();
-        const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
-        console.log('--- GEMINI RAW OUTPUT LENGTH ---', raw.length);
-        console.log('--- GEMINI FINISH REASON ---', data?.candidates?.[0]?.finishReason);
-        console.log('--- GEMINI RAW OUTPUT ENDS WITH ---', raw.slice(-50));
-        
-        // DEBUG WRITE TO FILE
-        import('fs').then(fs => fs.appendFileSync('gemini_debug.txt', `\n\n--- [${new Date().toISOString()}] FINISH: ${data?.candidates?.[0]?.finishReason} LENGTH: ${raw.length} ---\n${raw}\n`)).catch(e=>e);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+            generationConfig: {
+              maxOutputTokens: Math.max(maxTokens, 8192),
+              temperature: 0.25,
+              responseMimeType: 'application/json',
+              thinkingConfig: {
+                thinkingBudget: 0,
+              },
+            },
+          }),
+        });
 
-        const parsed = safeParseJSON(raw);
-        if (parsed) return parsed;
+        if (response.ok) {
+          const data = await response.json();
+          const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+          console.log('--- GEMINI RAW OUTPUT LENGTH ---', raw.length);
+          console.log('--- GEMINI FINISH REASON ---', data?.candidates?.[0]?.finishReason);
+          console.log('--- GEMINI RAW OUTPUT ENDS WITH ---', raw.slice(-50));
 
-        console.log('--- GEMINI JSON PARSE FAILED. CALLING GROQ REPAIR ---');
-        const repair = await callGroqChat(
-          'You output only valid JSON. No markdown.',
-          `Fix to valid JSON only:\n${raw}`,
-          { maxTokens: 1200, jsonMode: true },
-        ).catch(() => null);
-        const again = repair ? safeParseJSON(repair) : null;
-        if (again) return again;
-        lastErr = 'Gemini returned non-JSON output.';
+          const parsed = safeParseJSON(raw);
+          if (parsed) return parsed;
+
+          console.log('--- GEMINI JSON PARSE FAILED. CALLING GROQ REPAIR ---');
+          const repair = await callGroqChat(
+            'You output only valid JSON. No markdown.',
+            `Fix to valid JSON only:\n${raw}`,
+            { maxTokens: 1200, jsonMode: true },
+          ).catch(() => null);
+          const again = repair ? safeParseJSON(repair) : null;
+          if (again) return again;
+          lastErr = 'Gemini returned non-JSON output.';
+          modelFailed = true;
+          break;
+        }
+
+        const body = await readErrorBody(response);
+        lastErr = `Gemini API Error (${curModel}): ${body}`;
+
+        if (response.status === 429 || body.toLowerCase().includes('quota')) {
+          console.warn(`[CareerAI] Quota limit on ${curModel}, trying next model in cascade...`);
+          modelFailed = true;
+          break;
+        }
+
+        if ([500, 503].includes(response.status) && attempt < 1) {
+          await sleep(2000);
+          continue;
+        }
+        modelFailed = true;
         break;
       }
-
-      const body = await readErrorBody(response);
-      lastErr = `Gemini API Error: ${body}`;
-      if ((isRetryableStatus(response.status) || isRetryableBody(body)) && attempt < 2) {
-        await sleep((attempt + 1) * 1200);
-        continue;
-      }
-      break;
+      if (!modelFailed) break;
     }
   } else {
     lastErr = 'Missing GEMINI_API_KEY for structured analysis';
