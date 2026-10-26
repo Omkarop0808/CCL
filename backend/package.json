@@ -13,7 +13,10 @@
     "db:migrate-to-supabase": "node scripts/migrate-json-to-supabase.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
     "@supabase/supabase-js": "^2.49.1",
+    "aws-jwt-verify": "^5.2.1",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
@@ -23,6 +26,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.13",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.23.1",
     "socket.io": "^4.8.3",
     "uuid": "^9.0.1"
   },

@@ -5,12 +5,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import { Server } from 'socket.io';
-
+import { loadAwsSecrets } from './services/awsSecrets.js';
+import { isRdsEnabled, initRdsTable } from './services/rdsClient.js';
 
 // Ensure .env is loaded from the backend folder even when server
 // is started via "node backend/server.js" from the monorepo root.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Load secrets dynamically from AWS SSM Parameter Store if running on AWS
+await loadAwsSecrets();
+if (isRdsEnabled()) {
+  await initRdsTable();
+}
 
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profile.js';
@@ -90,7 +97,17 @@ app.use('/api/interview', interviewLabRoutes);
 app.use('/api/job-hunter', jobHunterRoutes);
 
 // Health check
-app.get('/api/health', (_, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/api/health', (_, res) => res.json({
+  status: 'ok',
+  timestamp: new Date().toISOString(),
+  cloud: {
+    provider: 'AWS',
+    region: process.env.AWS_REGION || 'us-east-1',
+    rdsPostgreSQL: isRdsEnabled() ? 'configured' : 'offline_fallback',
+    s3Bucket: process.env.S3_BUCKET_NAME || 'sahaya-storage-omkar-2026',
+    cognitoUserPool: process.env.COGNITO_USER_POOL_ID || 'us-east-1_EE6qnKupa',
+  },
+}));
 
 // 404 handler
 app.use((_, res) => res.status(404).json({ error: 'Route not found' }));

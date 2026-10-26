@@ -14,6 +14,7 @@ import { ragRetrieve } from '../services/ragLocal.js';
 import { tavilySearch } from '../services/tavily.js';
 import { findAll, findOne, insertOne, updateOne } from '../middleware/db.js';
 import { awardXp, getOrCreateGamification, incrementQuest, WORLDS } from '../services/gamificationCore.js';
+import { uploadToS3 } from '../services/s3Service.js';
 
 const router = express.Router();
 
@@ -998,6 +999,14 @@ router.post('/resume/upload-pdf', authMiddleware, upload.single('resumePdf'), as
     if (!extractedText) {
       return res.status(422).json({ error: 'Could not extract text from this PDF. You can paste resume text manually instead.' });
     }
+    // Upload resume to Amazon S3
+    const s3Key = `resumes/${userId}/${Date.now()}-${req.file.originalname || 'resume.pdf'}`;
+    const s3Result = await uploadToS3({
+      filePath: req.file.path,
+      key: s3Key,
+      contentType: req.file.mimetype || 'application/pdf',
+    });
+
     const doc = {
       id: `${userId}__resume_profile`,
       userId,
@@ -1005,6 +1014,8 @@ router.post('/resume/upload-pdf', authMiddleware, upload.single('resumePdf'), as
       pageCount: Number.isFinite(pageCount) ? pageCount : 0,
       extractedText,
       extractedPreview: extractedText.slice(0, 900),
+      s3Key: s3Result.success ? s3Result.key : null,
+      s3Url: s3Result.success ? s3Result.s3Url : null,
       updatedAt: nowIso(),
       source: 'pdf',
     };

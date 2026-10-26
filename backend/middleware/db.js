@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getSupabase, isSupabaseEnabled } from '../services/supabaseClient.js';
+import { isRdsEnabled, readRDS, writeRDS } from '../services/rdsClient.js';
 import { computeRowId } from '../services/rowId.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -114,6 +115,7 @@ async function withFallbackWrite(collection, operation, fn, fallbackData) {
  * @returns {Promise<any[]>}
  */
 export async function readDB(name) {
+  if (isRdsEnabled()) return withFallbackRead(name, 'read', () => readRDS(name));
   if (isSupabaseEnabled()) return withFallbackRead(name, 'read', () => readSupabase(name));
   return readFileDB(name);
 }
@@ -124,6 +126,7 @@ export async function readDB(name) {
  * @param {any[]} data
  */
 export async function writeDB(name, data) {
+  if (isRdsEnabled()) return withFallbackWrite(name, 'write', () => writeRDS(name, data), data);
   if (isSupabaseEnabled()) return withFallbackWrite(name, 'write', () => writeSupabase(name, data), data);
   writeFileDB(name, data);
 }
