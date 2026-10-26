@@ -144,3 +144,22 @@ export async function writeRDS(collection, rows) {
     client.release();
   }
 }
+
+/**
+ * Upserts a single document in Amazon RDS PostgreSQL app_data_rows
+ */
+export async function upsertOneRDS(collection, doc) {
+  const pool = getRdsPool();
+  if (!pool) return;
+
+  await initRdsTable();
+  const rowId = computeRowId(collection, doc);
+  await pool.query(
+    `INSERT INTO app_data_rows (collection, row_id, payload, updated_at)
+     VALUES ($1, $2, $3::jsonb, $4)
+     ON CONFLICT (collection, row_id)
+     DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+    [collection, rowId, JSON.stringify(doc), new Date().toISOString()]
+  );
+}
+

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getSupabase, isSupabaseEnabled } from '../services/supabaseClient.js';
-import { isRdsEnabled, readRDS, writeRDS } from '../services/rdsClient.js';
+import { isRdsEnabled, readRDS, writeRDS, upsertOneRDS } from '../services/rdsClient.js';
 import { computeRowId } from '../services/rowId.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -142,6 +142,13 @@ export async function findAll(collection, predicate) {
 }
 
 export async function insertOne(collection, doc) {
+  if (isRdsEnabled()) {
+    await withFallbackWrite(collection, 'insertOne', () => upsertOneRDS(collection, doc), [
+      ...readFileDB(collection),
+      doc,
+    ]);
+    return doc;
+  }
   if (isSupabaseEnabled()) {
     await withFallbackWrite(collection, 'insertOne', () => upsertOneSupabase(collection, doc), [
       ...readFileDB(collection),
@@ -156,6 +163,14 @@ export async function insertOne(collection, doc) {
 }
 
 export async function updateOne(collection, predicate, updates) {
+  if (isRdsEnabled()) {
+    const data = await withFallbackRead(collection, 'updateOne.read', () => readRDS(collection));
+    const idx = data.findIndex(predicate);
+    if (idx === -1) return null;
+    data[idx] = { ...data[idx], ...updates };
+    await withFallbackWrite(collection, 'updateOne.write', () => writeRDS(collection, data), data);
+    return data[idx];
+  }
   if (isSupabaseEnabled()) {
     const data = await withFallbackRead(collection, 'updateOne.read', () => readSupabase(collection));
     const idx = data.findIndex(predicate);
@@ -173,6 +188,14 @@ export async function updateOne(collection, predicate, updates) {
 }
 
 export async function upsertOne(collection, predicate, doc) {
+  if (isRdsEnabled()) {
+    const data = await withFallbackRead(collection, 'upsertOne.read', () => readRDS(collection));
+    const idx = data.findIndex(predicate);
+    if (idx === -1) data.push(doc);
+    else data[idx] = { ...data[idx], ...doc };
+    await withFallbackWrite(collection, 'upsertOne.write', () => writeRDS(collection, data), data);
+    return idx === -1 ? doc : data[data.findIndex(predicate)];
+  }
   if (isSupabaseEnabled()) {
     const data = await withFallbackRead(collection, 'upsertOne.read', () => readSupabase(collection));
     const idx = data.findIndex(predicate);
@@ -193,6 +216,14 @@ export async function upsertOne(collection, predicate, doc) {
 }
 
 export async function deleteOne(collection, predicate) {
+  if (isRdsEnabled()) {
+    const data = await withFallbackRead(collection, 'deleteOne.read', () => readRDS(collection));
+    const idx = data.findIndex(predicate);
+    if (idx === -1) return false;
+    data.splice(idx, 1);
+    await withFallbackWrite(collection, 'deleteOne.write', () => writeRDS(collection, data), data);
+    return true;
+  }
   if (isSupabaseEnabled()) {
     const data = await withFallbackRead(collection, 'deleteOne.read', () => readSupabase(collection));
     const idx = data.findIndex(predicate);
