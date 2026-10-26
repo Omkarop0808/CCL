@@ -260,8 +260,8 @@ const server = httpServer.listen(PORT, '0.0.0.0', () => {
   const supa = process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_KEY);
   console.log(`🗄️ Supabase: ${supa ? '✅ Enabled (app_data_rows)' : '❌ Not set — using backend/data/*.json'}`);
   console.log(`📧 Mail: ${process.env.MAIL_USER ? '✅ Set' : '❌ Missing — add to .env'}\n`);
-  const requiredAiKeysLoaded = Boolean(process.env.GROQ_API_KEY && process.env.GEMINI_API_KEY && process.env.TAVILY_API_KEY);
-  console.log(`🔐 Required AI keys (GROQ/GEMINI/TAVILY): ${requiredAiKeysLoaded ? '✅ Loaded' : '❌ Missing one or more'}\n`);
+  const requiredAiKeysLoaded = Boolean((process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY) && process.env.TAVILY_API_KEY);
+  console.log(`🔐 Required AI keys (GEMINI/TAVILY): ${requiredAiKeysLoaded ? '✅ Loaded' : '❌ Missing one or more'}\n`);
 });
 
 server.on('error', (err) => {
