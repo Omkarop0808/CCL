@@ -987,14 +987,19 @@ router.post('/resume/upload-pdf', authMiddleware, upload.single('resumePdf'), as
     return res.status(400).json({ error: 'Only PDF files are supported' });
   }
   try {
-    let parsed;
+    let parsed = null;
     try {
       parsed = await runPdfExtractionWithLlmware(req.file.path);
     } catch {
       // Robust local fallback so upload still works when llmware isn't installed.
-      parsed = await runPdfExtractionFallback(req.file.path);
+      try {
+        parsed = await runPdfExtractionFallback(req.file.path);
+      } catch (parseErr) {
+        console.warn('[PDF Extraction] Fallback parser warning:', parseErr.message);
+        parsed = { text: '', pageCount: 1 };
+      }
     }
-    const extractedText = String(parsed?.text || '').trim().slice(0, 120000) || `Candidate Resume: ${req.file.originalname || 'resume.pdf'} (extracted for cloud intelligence)`;
+    const extractedText = String(parsed?.text || '').trim().slice(0, 120000) || `Candidate Resume: ${req.file.originalname || 'resume.pdf'} (uploaded to S3 for cloud intelligence)`;
     const pageCount = Number(parsed?.pageCount || 1);
     // Upload resume to Amazon S3
     const s3Key = `resumes/${userId}/${Date.now()}-${req.file.originalname || 'resume.pdf'}`;
