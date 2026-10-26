@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import { Server } from 'socket.io';
 import { loadAwsSecrets } from './services/awsSecrets.js';
-import { isRdsEnabled, initRdsTable } from './services/rdsClient.js';
+import { isRdsEnabled, initRdsTable, getRdsPool } from './services/rdsClient.js';
 
 // Ensure .env is loaded from the backend folder even when server
 // is started via "node backend/server.js" from the monorepo root.
@@ -108,6 +108,43 @@ app.get('/api/health', (_, res) => res.json({
     cognitoUserPool: process.env.COGNITO_USER_POOL_ID || 'us-east-1_EE6qnKupa',
   },
 }));
+
+// Live Amazon RDS PostgreSQL inspector for viva demonstration
+app.get('/api/cloud/rds-status', async (_, res) => {
+  if (!isRdsEnabled()) {
+    return res.status(503).json({ error: 'Amazon RDS PostgreSQL is not configured' });
+  }
+  try {
+    const pool = getRdsPool();
+    const records = await pool.query(`
+      SELECT 
+        collection, 
+        row_id, 
+        payload->>'name' as name, 
+        payload->>'email' as email, 
+        payload->>'fileName' as fileName, 
+        payload->>'s3Key' as s3Key, 
+        updated_at 
+      FROM app_data_rows 
+      ORDER BY updated_at DESC 
+      LIMIT 15
+    `);
+    const counts = await pool.query(`SELECT collection, count(*) as count FROM app_data_rows GROUP BY collection ORDER BY count DESC`);
+    res.json({
+      status: 'online',
+      provider: 'Amazon RDS PostgreSQL',
+      instanceClass: 'db.t4g.micro (Single-AZ)',
+      database: process.env.DB_NAME || 'sahaya_db',
+      subnetType: 'Private Subnet (10.0.10.0/24)',
+      publiclyAccessible: 'NO',
+      securityGroup: 'sahaya-rds-sg (Port 5432 strictly chained to sahaya-ec2-sg)',
+      tableSummary: counts.rows,
+      recentRecords: records.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `RDS Query Error: ${err.message}` });
+  }
+});
 
 // 404 handler
 app.use((_, res) => res.status(404).json({ error: 'Route not found' }));
